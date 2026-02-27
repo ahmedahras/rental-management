@@ -11,3 +11,9 @@ dist/
 android/
 ios/
 *.log
+
+localdb/data/
+*.pid
+web/.web.pid
+backend/.env
+
