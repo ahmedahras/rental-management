@@ -1,0 +1,621 @@
+openapi: 3.1.0
+info:
+  title: Shop Management System API
+  version: 1.0.0
+  description: REST API for admin-only shop, tenant, rent, payment, invoice, and WhatsApp click-to-chat workflow.
+servers:
+  - url: https://api.example.com/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiError:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+        code:
+          type: string
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+    LoginResponse:
+      type: object
+      required: [access_token, expires_in]
+      properties:
+        access_token: { type: string }
+        expires_in: { type: integer, minimum: 1 }
+    Owner:
+      type: object
+      required: [owner_id, owner_name, whatsapp_number]
+      properties:
+        owner_id: { type: string, format: uuid }
+        owner_name: { type: string }
+        whatsapp_number: { type: string }
+        email: { type: string, nullable: true }
+        address: { type: string, nullable: true }
+    Shop:
+      type: object
+      required: [shop_id, shop_number, owner_id, monthly_rent, status]
+      properties:
+        shop_id: { type: string, format: uuid }
+        shop_number: { type: string }
+        owner_id: { type: string, format: uuid }
+        monthly_rent: { type: number }
+        status:
+          type: string
+          enum: [OCCUPIED, VACANT]
+        current_tenant_id: { type: string, format: uuid, nullable: true }
+    Tenant:
+      type: object
+      required: [tenant_id, tenant_name, whatsapp_number, shop_id, rent_start_date]
+      properties:
+        tenant_id: { type: string, format: uuid }
+        tenant_name: { type: string }
+        whatsapp_number: { type: string }
+        shop_id: { type: string, format: uuid }
+        rent_start_date: { type: string, format: date }
+        agreement_end_date: { type: string, format: date, nullable: true }
+        notes: { type: string, nullable: true }
+        is_active: { type: boolean }
+    RentLedger:
+      type: object
+      required:
+        - rent_id
+        - shop_id
+        - tenant_id
+        - month
+        - rent_amount
+        - amount_paid
+        - remaining_due
+        - payment_status
+      properties:
+        rent_id: { type: string, format: uuid }
+        shop_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        month: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$' }
+        rent_amount: { type: number }
+        previous_due: { type: number }
+        total_due: { type: number }
+        amount_paid: { type: number }
+        remaining_due: { type: number }
+        payment_status:
+          type: string
+          enum: [PAID, PARTIAL, PENDING]
+        next_due_date: { type: string, format: date }
+    PaymentEntry:
+      type: object
+      required: [payment_id, rent_id, amount, payment_mode, paid_on]
+      properties:
+        payment_id: { type: string, format: uuid }
+        rent_id: { type: string, format: uuid }
+        shop_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        amount: { type: number }
+        paid_on: { type: string, format: date }
+        payment_mode:
+          type: string
+          enum: [CASH, UPI, BANK_TRANSFER, CHEQUE]
+        transaction_ref: { type: string, nullable: true }
+    Invoice:
+      type: object
+      required: [invoice_id, invoice_number, rent_id, amount_paid, pdf_download_url]
+      properties:
+        invoice_id: { type: string, format: uuid }
+        invoice_number: { type: string }
+        invoice_date: { type: string, format: date }
+        invoice_month: { type: string }
+        rent_id: { type: string, format: uuid }
+        shop_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        owner_id: { type: string, format: uuid }
+        amount_paid: { type: number }
+        remaining_due: { type: number }
+        payment_mode:
+          type: string
+          enum: [CASH, UPI, BANK_TRANSFER, CHEQUE]
+        pdf_download_url: { type: string, format: uri }
+    WhatsappLinks:
+      type: object
+      required: [tenant_wa_link, owner_wa_link]
+      properties:
+        tenant_wa_link: { type: string, format: uri }
+        owner_wa_link: { type: string, format: uri }
+paths:
+  /auth/login:
+    post:
+      security: []
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: JWT issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+  /dashboard/summary:
+    get:
+      summary: Dashboard metrics
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_shops: { type: integer }
+                  occupied_shops: { type: integer }
+                  vacant_shops: { type: integer }
+                  expected_rent_current_month: { type: number }
+                  collected_current_month: { type: number }
+                  pending_dues_current_month: { type: number }
+  /owners:
+    get:
+      summary: List owners
+      responses:
+        '200':
+          description: Owner list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Owner' }
+    post:
+      summary: Create owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner_name, whatsapp_number]
+              properties:
+                owner_name: { type: string }
+                whatsapp_number: { type: string }
+                email: { type: string }
+                address: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Owner' }
+  /owners/{ownerId}:
+    parameters:
+      - in: path
+        name: ownerId
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: Get owner
+      responses:
+        '200':
+          description: Owner details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Owner' }
+    patch:
+      summary: Update owner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                owner_name: { type: string }
+                whatsapp_number: { type: string }
+                email: { type: string }
+                address: { type: string }
+      responses:
+        '200':
+          description: Updated owner
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Owner' }
+    delete:
+      summary: Delete owner
+      responses:
+        '204':
+          description: Deleted
+  /owners/{ownerId}/shops:
+    get:
+      summary: Shops owned by owner
+      parameters:
+        - in: path
+          name: ownerId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Shops
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Shop' }
+  /owners/{ownerId}/report:
+    get:
+      summary: Owner-wise rent collection report
+      parameters:
+        - in: path
+          name: ownerId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: from_month
+          required: false
+          schema: { type: string }
+        - in: query
+          name: to_month
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Report data
+  /shops:
+    get:
+      summary: List shops
+      responses:
+        '200':
+          description: Shop list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Shop' }
+    post:
+      summary: Create shop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shop_number, owner_id, monthly_rent]
+              properties:
+                shop_number: { type: string }
+                owner_id: { type: string, format: uuid }
+                monthly_rent: { type: number }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Shop' }
+  /shops/{shopId}:
+    parameters:
+      - in: path
+        name: shopId
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      summary: Update shop
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                shop_number: { type: string }
+                owner_id: { type: string, format: uuid }
+                monthly_rent: { type: number }
+                status:
+                  type: string
+                  enum: [OCCUPIED, VACANT]
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Shop' }
+    delete:
+      summary: Delete shop
+      responses:
+        '204':
+          description: Deleted
+  /shops/{shopId}/assign-tenant:
+    post:
+      summary: Assign active tenant to a shop
+      parameters:
+        - in: path
+          name: shopId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id]
+              properties:
+                tenant_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Assigned
+  /shops/{shopId}/remove-tenant:
+    post:
+      summary: Remove active tenant and mark shop vacant
+      parameters:
+        - in: path
+          name: shopId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Removed
+  /tenants:
+    get:
+      summary: List tenants
+      responses:
+        '200':
+          description: Tenant list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Tenant' }
+    post:
+      summary: Create tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_name, whatsapp_number, shop_id, rent_start_date]
+              properties:
+                tenant_name: { type: string }
+                whatsapp_number: { type: string }
+                shop_id: { type: string, format: uuid }
+                rent_start_date: { type: string, format: date }
+                agreement_end_date: { type: string, format: date }
+                notes: { type: string }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+  /tenants/{tenantId}:
+    parameters:
+      - in: path
+        name: tenantId
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      summary: Update tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tenant_name: { type: string }
+                whatsapp_number: { type: string }
+                agreement_end_date: { type: string, format: date }
+                notes: { type: string }
+                is_active: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Tenant' }
+    delete:
+      summary: Delete tenant
+      responses:
+        '204':
+          description: Deleted
+  /tenants/{tenantId}/payments:
+    get:
+      summary: Tenant payment history
+      parameters:
+        - in: path
+          name: tenantId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Payment history
+  /rent-cycles/generate:
+    post:
+      summary: Generate monthly rent ledgers for all occupied shops
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [month, next_due_date]
+              properties:
+                month: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$' }
+                next_due_date: { type: string, format: date }
+      responses:
+        '200':
+          description: Generation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inserted_count: { type: integer }
+  /rents:
+    get:
+      summary: List rent ledgers
+      parameters:
+        - in: query
+          name: month
+          schema: { type: string }
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [PAID, PARTIAL, PENDING]
+      responses:
+        '200':
+          description: Rent list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RentLedger' }
+  /payments:
+    post:
+      summary: Enter payment and optionally settle rent as PAID
+      description: If ledger becomes PAID, invoice PDF is generated and WhatsApp links are returned for tenant and owner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rent_id, amount, payment_mode]
+              properties:
+                rent_id: { type: string, format: uuid }
+                amount: { type: number, minimum: 0.01 }
+                payment_mode:
+                  type: string
+                  enum: [CASH, UPI, BANK_TRANSFER, CHEQUE]
+                transaction_ref: { type: string }
+                paid_on: { type: string, format: date }
+      responses:
+        '201':
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment: { $ref: '#/components/schemas/PaymentEntry' }
+                  rent_ledger: { $ref: '#/components/schemas/RentLedger' }
+                  invoice:
+                    oneOf:
+                      - { $ref: '#/components/schemas/Invoice' }
+                      - { type: 'null' }
+                  whatsapp_links:
+                    oneOf:
+                      - { $ref: '#/components/schemas/WhatsappLinks' }
+                      - { type: 'null' }
+  /invoices:
+    get:
+      summary: List invoices
+      responses:
+        '200':
+          description: Invoice list
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Invoice' }
+  /invoices/{invoiceId}:
+    parameters:
+      - in: path
+        name: invoiceId
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: Invoice detail
+      responses:
+        '200':
+          description: Invoice
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invoice' }
+  /invoices/{invoiceId}/whatsapp-links:
+    get:
+      summary: Build click-to-chat links for tenant and owner
+      parameters:
+        - in: path
+          name: invoiceId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Links
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WhatsappLinks' }
+  /public/invoices/{token}:
+    get:
+      security: []
+      summary: Secure public PDF download
+      parameters:
+        - in: path
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: PDF binary
+          content:
+            application/pdf: {}
+        '404':
+          description: Invalid or expired link
+  /reports/owner-wise:
+    get:
+      summary: Owner-wise collection report
+      parameters:
+        - in: query
+          name: from_month
+          schema: { type: string }
+        - in: query
+          name: to_month
+          schema: { type: string }
+      responses:
+        '200':
+          description: Report
+  /reports/shop-wise:
+    get:
+      summary: Shop-wise rent history
+      responses:
+        '200':
+          description: Report
+  /reports/tenant-wise:
+    get:
+      summary: Tenant-wise payment history
+      responses:
+        '200':
+          description: Report
+  /reports/summary:
+    get:
+      summary: Monthly and yearly summaries
+      responses:
+        '200':
+          description: Summary report
+  /reports/export:
+    get:
+      summary: Export reports to PDF/Excel
+      parameters:
+        - in: query
+          name: report_type
+          required: true
+          schema:
+            type: string
+            enum: [owner_wise, shop_wise, tenant_wise, summary]
+        - in: query
+          name: format
+          required: true
+          schema:
+            type: string
+            enum: [pdf, xlsx]
+      responses:
+        '200':
+          description: File download
