@@ -17,3 +17,9 @@ localdb/data/
 web/.web.pid
 backend/.env
 
+
+localdb/data/
+*.pid
+web/.web.pid
+backend/.env
+
