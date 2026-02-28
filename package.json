@@ -1,24 +1,24 @@
 {
-  "name": "shop-management-system",
-  "private": true,
-  "version": "1.0.0",
-  "workspaces": [
-    "backend",
-    "web"
-  ],
-  "scripts": {
-    "dev": "npm run dev -w backend",
-    "dev:backend": "npm run dev -w backend",
-    "dev:web": "npm run dev -w web",
-    "dev:mobile": "cd mobile_flutter && flutter run --dart-define=API_BASE_URL=http://localhost:4000",
-    "build": "npm run build -w backend && npm run build -w web",
-    "lint": "npm run lint -w backend && npm run lint -w web"
-  },
-  "engines": {
-    "node": ">=20.10.0"
-  },
-  "overrides": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
-  }
+    "name":  "shop-management-system",
+    "private":  true,
+    "version":  "1.0.0",
+    "workspaces":  [
+                       "backend",
+                       "web"
+                   ],
+    "scripts":  {
+                    "dev":  "npm run dev -w backend",
+                    "dev:backend":  "npm run dev -w backend",
+                    "dev:web":  "npm run dev -w web",
+                    "dev:mobile":  "cd mobile_flutter \u0026\u0026 flutter run --dart-define=API_BASE_URL=http://localhost:4000",
+                    "build":  "npm run build -w backend \u0026\u0026 npm run build -w web",
+                    "lint":  "npm run lint -w backend \u0026\u0026 npm run lint -w web"
+                },
+    "engines":  {
+                    "node":  "20.x"
+                },
+    "overrides":  {
+                      "react":  "18.3.1",
+                      "react-dom":  "18.3.1"
+                  }
 }
