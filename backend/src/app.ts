@@ -43,6 +43,8 @@ export async function buildApp() {
   await invoiceRoutes(app);
   await reportRoutes(app);
 
+  app.get('/', async () => ({ status: 'ok', service: 'rental-management' }));
+
   app.setErrorHandler((error, _request, reply) => {
     const status = (error as { statusCode?: number }).statusCode ?? 500;
     const message = error instanceof Error ? error.message : 'Internal Server Error';

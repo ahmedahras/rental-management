@@ -10,6 +10,7 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16),
   JWT_EXPIRES_IN: z.string().default('12h'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
   PUBLIC_BASE_URL: z.string().url(),
   INVOICE_STORAGE_ROOT: z.string().default('storage/invoices'),
   DEFAULT_COUNTRY_CODE: z.string().default('91'),

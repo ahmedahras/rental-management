@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'models/dashboard_summary.dart';
+import 'app_config.dart';
 import 'services/api_client.dart';
 import 'services/file_download.dart';
 import 'services/offline_queue_service.dart';
@@ -12,6 +13,8 @@ import 'services/offline_queue_service.dart';
 part 'ui/dashboard_tab.part.dart';
 part 'ui/reports_tab.part.dart';
 part 'ui/admin_tab.part.dart';
+
+final GlobalKey<ScaffoldMessengerState> appScaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 void main() {
   runApp(const ShopManagementApp());
@@ -47,6 +50,7 @@ class ShopManagementApp extends StatelessWidget {
 
     return MaterialApp(
       title: 'Shop Management (Flutter)',
+      scaffoldMessengerKey: appScaffoldMessengerKey,
       theme: base.copyWith(
         scaffoldBackgroundColor: background,
         cardTheme: CardTheme(
@@ -176,18 +180,30 @@ class BootstrapPage extends StatefulWidget {
 }
 
 class _BootstrapPageState extends State<BootstrapPage> {
-  final _api = ApiClient();
+  late final ApiClient _api;
   bool _loading = true;
   bool _loggedIn = false;
 
   @override
   void initState() {
     super.initState();
+    _api = ApiClient(onSessionExpired: _handleSessionExpired);
     _checkAuth();
+  }
+
+  Future<void> _handleSessionExpired() async {
+    if (!mounted) return;
+    setState(() {
+      _loggedIn = false;
+    });
+    appScaffoldMessengerKey.currentState?.showSnackBar(
+      const SnackBar(content: Text('Session expired, please login again')),
+    );
   }
 
   Future<void> _checkAuth() async {
     final token = await _api.getToken();
+    if (!mounted) return;
     setState(() {
       _loggedIn = token.isNotEmpty;
       _loading = false;
@@ -232,15 +248,14 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final result = await widget.api.post('/auth/login', {
-        'username': _username.text.trim(),
-        'password': _password.text,
-      }, auth: false);
-
-      await widget.api.setToken(result['access_token'] as String);
+      await widget.api.login(
+        username: _username.text.trim(),
+        password: _password.text,
+      );
       widget.onLoggedIn();
     } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      final message = e.toString().replaceFirst('Exception: ', '').replaceFirst('DioException [unknown]: ', '');
+      setState(() => _error = message);
     } finally {
       setState(() => _loading = false);
     }
@@ -297,6 +312,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   String _tenantWaLink = '';
   String _ownerWaLink = '';
+  String _invoicePdfLink = '';
+  String _invoiceInfo = '';
 
   List<Map<String, dynamic>> _pendingRents = [];
   String? _selectedRentId;
@@ -689,7 +706,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _logout() async {
-    await widget.api.clearToken();
+    await widget.api.logout(callBackend: true);
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
@@ -719,6 +736,8 @@ class _DashboardPageState extends State<DashboardPage> {
       _payLoading = true;
       _error = null;
       _queueInfo = '';
+      _invoicePdfLink = '';
+      _invoiceInfo = '';
     });
 
     final payload = {
@@ -730,10 +749,14 @@ class _DashboardPageState extends State<DashboardPage> {
     try {
       final result = await widget.api.post('/payments', payload);
       final wa = result['whatsapp_links'] as Map<String, dynamic>?;
+      final invoice = result['invoice'] as Map<String, dynamic>?;
+      final invoiceToken = (invoice?['public_token'] ?? '').toString();
 
       setState(() {
         _tenantWaLink = wa?['tenantWaLink'] as String? ?? '';
         _ownerWaLink = wa?['ownerWaLink'] as String? ?? '';
+        _invoicePdfLink = invoiceToken.isNotEmpty ? '${AppConfig.apiBaseUrl}/public/invoices/$invoiceToken' : '';
+        _invoiceInfo = invoiceToken.isNotEmpty ? 'Invoice generated. You can view the bill PDF now.' : '';
       });
 
       await _loadAll();
@@ -801,7 +824,7 @@ class _DashboardPageState extends State<DashboardPage> {
     });
 
     try {
-      String? tenantShopId;
+      String tenantShopId = '';
       final shopNumber = _tenantNewShopNumber.text.trim();
       final inlineRent = double.tryParse(_tenantNewShopRent.text);
       final ownerIdForNewShop = _shopOwnerId ??
@@ -844,7 +867,7 @@ class _DashboardPageState extends State<DashboardPage> {
         tenantShopId = (createdShop['shop_id'] ?? '').toString();
       }
 
-      if (tenantShopId == null || tenantShopId.isEmpty) {
+      if (tenantShopId.isEmpty) {
         setState(() => _error = 'Failed to create shop for tenant.');
         return;
       }

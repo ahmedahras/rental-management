@@ -74,8 +74,10 @@ extension DashboardTabPart on _DashboardPageState {
   }
 
   Widget _summaryCards() {
-    if (_summary == null) return const Text('Loading summary...');
-    final s = _summary!;
+    final s = _summary;
+    if (s == null) {
+      return const Text('Loading summary...');
+    }
     final colors = _appColors(context);
     final cards = [
       _kpiCard(context, label: 'Total Shops', value: '${s.totalShops}'),
@@ -104,7 +106,8 @@ extension DashboardTabPart on _DashboardPageState {
   }
 
   Widget _ownerSummaryCard() {
-    if (_ownerSummary == null) {
+    final s = _ownerSummary;
+    if (s == null) {
       return _sectionCard(
         child: _sectionTitle(
           context,
@@ -114,7 +117,6 @@ extension DashboardTabPart on _DashboardPageState {
       );
     }
 
-    final s = _ownerSummary!;
     final expected = _asDouble(s['expected_rent']);
     final collected = _asDouble(s['collected_rent']);
     final totalDue = _asDouble(s['total_due']);
@@ -429,6 +431,13 @@ extension DashboardTabPart on _DashboardPageState {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
+              onPressed: _invoicePdfLink.isEmpty ? null : () => _openWa(_invoicePdfLink),
+              child: const Text('View Bill PDF'),
+            ),
+          ),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
               onPressed: _tenantWaLink.isEmpty ? null : () => _openWa(_tenantWaLink),
               child: const Text('Send Bill to Tenant'),
             ),
@@ -440,6 +449,16 @@ extension DashboardTabPart on _DashboardPageState {
               child: const Text('Send Bill to Owner'),
             ),
           ),
+          if (_invoiceInfo.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              _invoiceInfo,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: _appColors(context).success,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ],
         ],
       ),
     );
